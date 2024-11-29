@@ -7,7 +7,8 @@ output_file = "output/address_info.csv"  # File lưu riêng thông tin địa ch
 
 try:
     df_locations = pd.read_csv(locations_file)
-    locations = df_locations["Địa điểm"].dropna().tolist()  # Lấy cột "Địa điểm" và loại bỏ giá trị NaN
+    df_locations["full_location"] = df_locations["Địa điểm"] + ", " + df_locations["Tỉnh thành phố"]
+    locations = df_locations["full_location"].dropna().tolist()
 except Exception as e:
     print(f"Lỗi khi đọc file CSV: {e}")
     locations = []
@@ -20,7 +21,7 @@ def scrape_locations(locations):
     data = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)  # Mở trình duyệt không chế độ headless để theo dõi
+        browser = p.chromium.launch(headless=True)  # Mở trình duyệt không chế độ headless để theo dõi
         page = browser.new_page()
 
         for location in locations:

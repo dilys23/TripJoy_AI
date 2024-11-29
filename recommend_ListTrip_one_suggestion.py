@@ -1,8 +1,10 @@
 import openai
 import csv
 
-# Đảm bảo rằng bạn thay đổi OPENAI_API_KEY bằng API key của bạn
-openai.api_key = ""
+import os
+from dotenv import load_dotenv, dotenv_values 
+load_dotenv() 
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def suggest_trip_plan(input):
     prompt = f"""
@@ -38,7 +40,7 @@ def suggest_trip_plan(input):
         trip_plans = response['choices'][0]['message']['content'].strip()
 
         # Xuất kết quả ra file CSV
-        with open("trip_plans.csv", mode="w", encoding="utf-8", newline="") as file:
+        with open("trip_plans_one_suggestion.csv", mode="w", encoding="utf-8", newline="") as file:
             writer = csv.writer(file)
 
             # Ghi tiêu đề
