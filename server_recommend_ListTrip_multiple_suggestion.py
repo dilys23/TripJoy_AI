@@ -3,6 +3,11 @@ import json
 import openai
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
+import pandas as pd
+from playwright.sync_api import sync_playwright
+
+app = Flask(__name__)
+
 # Đảm bảo bạn thay đổi API Key
 import os
 from dotenv import load_dotenv, dotenv_values 
@@ -14,6 +19,22 @@ def generate_dates(start_date, days):
     dates = [(start + timedelta(days=i)).strftime("%d/%m/%Y") for i in range(days)]
     end_date = (start + timedelta(days=days - 1)).strftime("%d/%m/%Y")
     return dates, end_date
+
+def clean_trip_data(trip_data):
+    """Clean the trip data to ensure it is in the correct format."""
+    cleaned_data = []
+    
+    for trip in trip_data:
+        # Ensure cost is an integer
+        for detail in trip['details']:
+            detail['cost'] = int(detail['cost']) if isinstance(detail['cost'], (int, float)) else 0
+            # Ensure date is correctly formatted
+            try:
+                detail['date'] = datetime.strptime(detail['date'], "%d %B %Y").strftime("%d/%m/%Y")
+            except ValueError:
+                detail['date'] = "Invalid Date"
+        cleaned_data.append(trip)
+    return cleaned_data
 
 def suggest_trip_plan(input):
     dates, end_date = generate_dates(input['start_date'], input['days'])
@@ -49,7 +70,7 @@ Desired output:
           "date": "Day Month", // e.g., "5 December 2024"
           "time_range": "Time range", // e.g., "7:00 AM - 8:00 AM"
           "location": "Specific place name", // e.g., "Phở Bát Đàn"
-          "province_city": "Province or city name", // e.g., "Hà Nội" must to be provided belong your start location and end location
+          "province_city": "Province or city name", // e.g., "Hà Nội"
           "activity": "Activity", // e.g., "Eating breakfast"
           "cost": "Cost" // e.g., 50000
         }}
@@ -63,7 +84,7 @@ Desired output:
           "date": "Day Month", // e.g., "5 December 2024"
           "time_range": "Time range", // e.g., "7:00 AM - 8:00 AM"
           "location": "Specific place name", // e.g., "Bánh Cuốn Gia Truyền"
-          "province_city": "Province or city name", // e.g., "Hà Nội" must to be provided belong your start location and end location
+          "province_city": "Province or city name", // e.g., "Hà Nội"
           "activity": "Activity", // e.g., "Eating breakfast"
           "cost": "Cost" // e.g., 40000
         }}
@@ -77,7 +98,7 @@ Desired output:
           "date": "Day Month", // e.g., "6 December 2024"
           "time_range": "Time range", // e.g., "9:00 AM - 11:00 AM"
           "location": "Specific place name", // e.g., "Temple of Literature"
-          "province_city": "Province or city name", // e.g., "Hà Nội" must to be provided belong your start location and end location
+          "province_city": "Province or city name", // e.g., "Hà Nội"
           "activity": "Activity", // e.g., "Exploring cultural heritage"
           "cost": "Cost" // e.g., 70000
         }}
@@ -659,61 +680,131 @@ Below are itinerary suggestions customized into three main themes: nature explor
 """
 
     try:
-        # Gọi API OpenAI để nhận lịch trình
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=3000,
             temperature=0.7
         )
+        print("response",response['choices'][0]['message']['content'].strip())
+        # return response['choices'][0]['message']['content'].strip()
+         # Process and clean the response
+        # Trích xuất và làm sạch dữ liệu từ phản hồi
+        trip_data = json.loads(response['choices'][0]['message']['content'].strip())
+        trip_plans = clean_trip_data(trip_data['trip_plans'])
+        print ("trip_plans",trip_plans)
+        # Lấy danh sách các địa điểm từ kế hoạch chuyến đi
+        locations = [f"{detail['location']}, {detail['province_city']}" for plan in trip_plans for detail in plan['details']]
+        print("locations list", locations)
 
-        # In toàn bộ phản hồi để kiểm tra dữ liệu
-       
+# Gọi hàm scrape_locations với danh sách chuỗi locations
+        location_details = scrape_locations(locations)
 
-        # Kiểm tra nếu phản hồi có định dạng đúng JSON và xử lý nó
-        trip_plans_json = response['choices'][0]['message']['content'].strip()
-        print(trip_plans_json)
-        try:
-            # Thử parse lại JSON từ dữ liệu trả về
-            trip_plans = json.loads(trip_plans_json)
-            
-            # Ghi kết quả vào file CSV
-            with open("trip_plans_recommend_multiple_suggestion.csv", mode="w", encoding="utf-8", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow(["Ngày", "Khung giờ", "Địa điểm", "Tỉnh thành phố", "Hoạt động", "Chi phí", "Thể loại"])
 
-                for plan in trip_plans["trip_plans"]:
-                    theme = plan["theme"]  # Lấy thể loại từ kế hoạch chuyến đi
-                    for detail in plan["details"]:
-                        writer.writerow([
-                            detail["date"],
-                            detail["time_range"],
-                            detail["location"],
-                            detail["province_city"],
-                            detail["activity"],
-                            detail["cost"],
-                            theme  # Thêm thể loại vào dòng CSV
-                        ])
+        # Gọi hàm scrape_locations để lấy thông tin chi tiết từ Google Maps
+        location_details = scrape_locations(locations)
 
-            print(f"Kết quả đã được lưu vào file 'trip_plans_recommend1_copy.csv'. Chuyến đi kéo dài từ {user_input['start_date']}.")
+        # Kết hợp dữ liệu từ trip_plans và location_details
+        for plan in trip_plans:
+          for detail, location_detail in zip(plan['details'], location_details):
+              detail['address'] = location_detail.get('address', 'N/A')
+              detail['latitude'] = location_detail.get('latitude', 'N/A')
+              detail['longitude'] = location_detail.get('longitude', 'N/A')
 
-        except json.JSONDecodeError as e:
-            print(f"Lỗi định dạng JSON từ phản hồi: {e}")
-        except Exception as e:
-            print(f"Lỗi khi xử lý dữ liệu: {e}")
+        # Trả về dữ liệu kết hợp
+        return {"trip_plans": trip_plans}
 
     except Exception as e:
-        print(f"Lỗi khi gọi API OpenAI: {e}")
+        return {"error": str(e)}
+    
+def scrape_locations(locations):
+    data = []
 
-# Thông tin người dùng nhập
-user_input = {
-    "startLocation": "Đà Lạt",
-    "destination": "Đà Lạt",
-    "days": 2,
-    "start_date": "07/12/2024",  # Ngày bắt đầu chuyến đi
-    "budget": 5000000,
-    "transport": "xe máy"
-}
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)  # Mở trình duyệt không chế độ headless để theo dõi
+        page = browser.new_page()
 
-# Gọi hàm để gợi ý lịch trình
-suggest_trip_plan(user_input)
+        for location in locations:
+            try:
+                # Mở Google Maps
+                page.goto("https://maps.google.com", timeout=60000)
+
+                # Nhập địa điểm vào ô tìm kiếm
+                search_box = page.locator('//input[@id="searchboxinput"]')
+                search_box.fill(location)
+                page.press('//input[@id="searchboxinput"]', 'Enter')
+
+                # Chờ trang tải
+                page.wait_for_load_state('networkidle', timeout=60000)
+
+                # Kiểm tra xem có danh sách địa điểm xuất hiện hay không
+                has_location_list = page.locator('//a[contains(@href, "https://www.google.com/maps/place")]').count()
+
+                if has_location_list > 0:
+                    print(f"Processing location list for '{location}'")
+                    page.hover('//a[contains(@href, "https://www.google.com/maps/place")]')
+                    page.click('//a[contains(@href, "https://www.google.com/maps/place")]')
+                    page.wait_for_load_state('networkidle', timeout=60000)
+                else:
+                    print(f"No location list for '{location}', processing single result")
+
+                # Lấy thông tin địa chỉ
+                try:
+                    address = page.locator('//div[contains(@class, "Io6YTe")]').first.inner_text(timeout=10000)
+                except Exception:
+                    address = "N/A"
+
+                # Lấy tọa độ từ URL
+                try:
+                    url = page.url
+                    coords = url.split("/@")[1].split(",")[:2]
+                    latitude = coords[0].strip()
+                    longitude = coords[1].strip()
+                except Exception:
+                    latitude = "N/A"
+                    longitude = "N/A"
+
+                # Lưu kết quả
+                data.append({
+                    "location": location,
+                    "address": address,
+                    "latitude": latitude,
+                    "longitude": longitude
+                })
+                print(f"Processed: {location}")
+
+            except Exception as e:
+                print(f"Failed to process location '{location}': {e}")
+                data.append({
+                    "location": location,
+                    "address": "Error",
+                    "latitude": "Error",
+                    "longitude": "Error"
+                })
+
+        browser.close()
+
+    return data
+
+
+# API endpoint để xử lý yêu cầu
+@app.route('/')
+def home():
+    return "Welcome to the Trip Planner API!"
+
+@app.route('/api/trip-planner', methods=['POST'])
+def trip_planner():
+    try:
+        # Nhận dữ liệu từ request
+        input_data = request.json
+        # Gọi hàm suggest_trip_plan
+        result = suggest_trip_plan(input_data)
+        # print(r)
+        # Trả về kết quả dưới dạng JSON
+        return jsonify({"status": "success", "data": result})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+# Chạy ứng dụng Flask
+if __name__ == '__main__':
+    app.run(debug=True)

@@ -2,7 +2,7 @@ import pandas as pd
 from playwright.sync_api import sync_playwright
 
 # Đọc danh sách địa điểm từ file CSV
-locations_file = "trip_plans_recommend.csv"
+locations_file = "trip_plans_recommend_multiple_suggestion.csv"
 output_file = "output/address_info.csv"  # File lưu riêng thông tin địa chỉ
 
 try:
