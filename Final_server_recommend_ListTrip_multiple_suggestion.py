@@ -1,18 +1,25 @@
-import csv
 import json
 import openai
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 import pandas as pd
 from playwright.sync_api import sync_playwright
+from flask_cors import CORS
+import requests
+
 
 app = Flask(__name__)
+CORS(app)
 
-# Đảm bảo bạn thay đổi API Key
+
 import os
-from dotenv import load_dotenv, dotenv_values 
-load_dotenv() 
+from dotenv import load_dotenv, dotenv_values
+
+load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
+distance_matrix_api_key = os.getenv("DISTANCE_MATRIX_API_KEY")
+
+
 def generate_dates(start_date, days):
     """Tạo danh sách ngày từ ngày bắt đầu và trả về ngày kết thúc."""
     start = datetime.strptime(start_date, "%d/%m/%Y")
@@ -20,30 +27,34 @@ def generate_dates(start_date, days):
     end_date = (start + timedelta(days=days - 1)).strftime("%d/%m/%Y")
     return dates, end_date
 
+
 def clean_trip_data(trip_data):
     """Clean the trip data to ensure it is in the correct format."""
     cleaned_data = []
-    
+
     for trip in trip_data:
-        # Ensure cost is an integer
-        for detail in trip['details']:
-            detail['cost'] = int(detail['cost']) if isinstance(detail['cost'], (int, float)) else 0
-            # Ensure date is correctly formatted
+        for detail in trip["details"]:
+            detail["cost"] = (
+                int(detail["cost"]) if isinstance(detail["cost"], (int, float)) else 0
+            )
             try:
-                detail['date'] = datetime.strptime(detail['date'], "%d %B %Y").strftime("%d/%m/%Y")
+                detail["date"] = datetime.strptime(detail["date"], "%d %B %Y").strftime(
+                    "%d/%m/%Y"
+                )
             except ValueError:
-                detail['date'] = "Invalid Date"
+                detail["date"] = "Invalid Date"
         cleaned_data.append(trip)
     return cleaned_data
 
+
 def suggest_trip_plan(input):
-    dates, end_date = generate_dates(input['start_date'], input['days'])
+    dates, end_date = generate_dates(input["start_date"], input["days"])
     prompt = f"""
 You are a travel assistant. The user provides details about their trip, and you will suggest a detailed itinerary for each day.
 The information provided by the user:
 - Departure point: {input['startLocation']}
 - Destination: {input['destination']}
-- Duration: {input['days']} days (from {input['start_date']} to {end_date})
+- Duration: {input['days']} days (from {input['start_date']} to {input['end_date']})
 - Budget: {input['budget']} VND
 - Transportation: {input['transport']}
 
@@ -63,11 +74,11 @@ Desired output:
 {{
   "trip_plans": [
     {{
-      "suggestion": "Suggestion 1: Nature Exploration Itinerary",
-      "theme": "Nature Exploration",
+      "suggestion": "Gợi ý 1 : Khám phá văn hóa",
+      "theme": "Khám phá văn hóa",
       "details": [
         {{
-          "date": "Day Month", // e.g., "5 December 2024"
+          "date": "Day Month", // e.g., "5/12/2024"
           "time_range": "Time range", // e.g., "7:00 AM - 8:00 AM"
           "location": "Specific place name", // e.g., "Phở Bát Đàn"
           "province_city": "Province or city name", // e.g., "Hà Nội"
@@ -77,11 +88,11 @@ Desired output:
       ]
     }},
     {{
-      "suggestion": "Suggestion 2: Food Exploration Itinerary",
-      "theme": "Food Exploration",
+      "suggestion": "Gợi ý 2: Khám phá ẩm thực",
+      "theme": "Khám phá ẩm thực",
       "details": [
         {{
-          "date": "Day Month", // e.g., "5 December 2024"
+          "date": "Day Month", // e.g., "5/12/2024"
           "time_range": "Time range", // e.g., "7:00 AM - 8:00 AM"
           "location": "Specific place name", // e.g., "Bánh Cuốn Gia Truyền"
           "province_city": "Province or city name", // e.g., "Hà Nội"
@@ -91,11 +102,11 @@ Desired output:
       ]
     }},
     {{
-      "suggestion": "Suggestion 3: Cultural Exploration Itinerary",
-      "theme": "Cultural Exploration",
+      "suggestion": "Gợi ý 3: Khám phá nền văn hóa",
+      "theme": "Khám phá nền văn hóa",
       "details": [
         {{
-          "date": "Day Month", // e.g., "6 December 2024"
+          "date": "Day Month", // e.g., "5/12/2024"
           "time_range": "Time range", // e.g., "9:00 AM - 11:00 AM"
           "location": "Specific place name", // e.g., "Temple of Literature"
           "province_city": "Province or city name", // e.g., "Hà Nội"
@@ -119,7 +130,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
     "theme": "Nature Exploration",
     "details": [{{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "7:00 AM - 8:00 AM",
 
@@ -135,7 +146,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "8:30 AM - 12:00 PM",
 
@@ -151,7 +162,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "12:30 PM - 1:30 PM",
 
@@ -167,7 +178,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "2:00 PM - 5:30 PM",
 
@@ -183,7 +194,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "6:00 PM - 7:00 PM",
 
@@ -199,7 +210,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "9:00 PM - Overnight",
 
@@ -215,7 +226,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "7:00 AM - 8:00 AM",
 
@@ -231,7 +242,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "9:00 AM - 12:00 PM",
 
@@ -247,7 +258,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "12:30 PM - 1:30 PM",
 
@@ -263,7 +274,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "2:00 PM - 5:30 PM",
 
@@ -279,7 +290,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "6:00 PM - 7:00 PM",
 
@@ -295,7 +306,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "9:00 PM - Overnight",
 
@@ -319,7 +330,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
     "details": [
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "7:00 AM - 8:00 AM",
 
@@ -335,7 +346,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "8:30 AM - 10:30 AM",
 
@@ -351,7 +362,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "12:00 PM - 1:30 PM",
 
@@ -367,7 +378,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "2:00 PM - 4:00 PM",
 
@@ -383,7 +394,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "6:00 PM - 8:00 PM",
 
@@ -399,7 +410,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "9:00 PM - Overnight",
 
@@ -415,7 +426,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "7:00 AM - 8:00 AM",
 
@@ -431,7 +442,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "9:00 AM - 11:00 AM",
 
@@ -447,7 +458,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "12:00 PM - 1:30 PM",
 
@@ -463,7 +474,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "2:00 PM - 4:30 PM",
 
@@ -479,7 +490,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "5:00 PM - 7:00 PM",
 
@@ -495,7 +506,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "9:00 PM - Overnight",
 
@@ -519,7 +530,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
     "details": [
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "7:00 AM - 8:00 AM",
 
@@ -535,7 +546,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "9:00 AM - 12:00 PM",
 
@@ -551,7 +562,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "12:30 PM - 1:30 PM",
 
@@ -567,7 +578,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "2:00 PM - 5:00 PM",
 
@@ -583,7 +594,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "6:00 PM - 8:00 PM",
 
@@ -599,7 +610,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "5 December 2024",
+      "date": "5/12/2024",
 
       "time_range": "9:00 PM - Overnight",
 
@@ -615,7 +626,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "7:00 AM - 8:00 AM",
 
@@ -631,7 +642,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "9:00 AM - 11:00 AM",
 
@@ -647,7 +658,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "11:30 AM - 1:00 PM",
 
@@ -663,7 +674,7 @@ Below are itinerary suggestions customized into three main themes: nature explor
 
     {{
 
-      "date": "6 December 2024",
+      "date": "6/12/2024",
 
       "time_range": "2:00 PM - 4:00 PM",
 
@@ -684,127 +695,175 @@ Below are itinerary suggestions customized into three main themes: nature explor
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=3000,
-            temperature=0.7
+            temperature=0.7,
         )
-        print("response",response['choices'][0]['message']['content'].strip())
-        # return response['choices'][0]['message']['content'].strip()
-         # Process and clean the response
-        # Trích xuất và làm sạch dữ liệu từ phản hồi
-        trip_data = json.loads(response['choices'][0]['message']['content'].strip())
-        trip_plans = clean_trip_data(trip_data['trip_plans'])
-        print ("trip_plans",trip_plans)
-        # Lấy danh sách các địa điểm từ kế hoạch chuyến đi
-        locations = [f"{detail['location']}, {detail['province_city']}" for plan in trip_plans for detail in plan['details']]
-        print("locations list", locations)
+        print("response", response["choices"][0]["message"]["content"].strip())
 
-# Gọi hàm scrape_locations với danh sách chuỗi locations
-        location_details = scrape_locations(locations)
+        trip_data = json.loads(response["choices"][0]["message"]["content"].strip())
+        trip_plans = trip_data.get("trip_plans", [])
 
-
-        # Gọi hàm scrape_locations để lấy thông tin chi tiết từ Google Maps
-        location_details = scrape_locations(locations)
-
-        # Kết hợp dữ liệu từ trip_plans và location_details
-        for plan in trip_plans:
-          for detail, location_detail in zip(plan['details'], location_details):
-              detail['address'] = location_detail.get('address', 'N/A')
-              detail['latitude'] = location_detail.get('latitude', 'N/A')
-              detail['longitude'] = location_detail.get('longitude', 'N/A')
-
-        # Trả về dữ liệu kết hợp
-        return {"trip_plans": trip_plans}
+        updated_trip_plans = scrape_and_update_trip_plans(trip_plans)
+        print("Total distance:", calculate_total_distance(updated_trip_plans))
+        return {"trip_plans": updated_trip_plans}
 
     except Exception as e:
+        print(f"Error: {e}")
         return {"error": str(e)}
-    
-def scrape_locations(locations):
-    data = []
 
+
+def get_lat_lng(address):
+    # URL của API và API key của bạn
+    api_key = distance_matrix_api_key
+    base_url = "https://api.distancematrix.ai/maps/api/geocode/json"
+
+    url = f"{base_url}?address={address}&key={api_key}"
+    print("\n url : ", url)
+    response = requests.get(url)
+    print("\n response : ", response)
+
+    if response.status_code == 200:
+        data = response.json()
+
+        if data["status"] == "OK":
+            lat = data["result"][0]["geometry"]["location"]["lat"]
+            lng = data["result"][0]["geometry"]["location"]["lng"]
+            print("\n lat : ", lat, " lng : ", lng)
+            return lat, lng
+        else:
+            print("Không tìm thấy kết quả cho địa chỉ.")
+            return None, None
+    else:
+        print(f"Yêu cầu không thành công. Mã lỗi: {response.status_code}")
+        return None, None
+
+
+def scrape_and_update_trip_plans(trip_plans):
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)  # Mở trình duyệt không chế độ headless để theo dõi
+        browser = p.chromium.launch(headless=True)  # Sử dụng headless=True cho tự động
         page = browser.new_page()
 
-        for location in locations:
-            try:
-                # Mở Google Maps
-                page.goto("https://maps.google.com", timeout=60000)
-
-                # Nhập địa điểm vào ô tìm kiếm
-                search_box = page.locator('//input[@id="searchboxinput"]')
-                search_box.fill(location)
-                page.press('//input[@id="searchboxinput"]', 'Enter')
-
-                # Chờ trang tải
-                page.wait_for_load_state('networkidle', timeout=60000)
-
-                # Kiểm tra xem có danh sách địa điểm xuất hiện hay không
-                has_location_list = page.locator('//a[contains(@href, "https://www.google.com/maps/place")]').count()
-
-                if has_location_list > 0:
-                    print(f"Processing location list for '{location}'")
-                    page.hover('//a[contains(@href, "https://www.google.com/maps/place")]')
-                    page.click('//a[contains(@href, "https://www.google.com/maps/place")]')
-                    page.wait_for_load_state('networkidle', timeout=60000)
-                else:
-                    print(f"No location list for '{location}', processing single result")
-
-                # Lấy thông tin địa chỉ
+        for trip in trip_plans:
+            for detail in trip["details"]:
+                location = detail.get("location", "")
+                province_city = detail.get("province_city", "")
+                search_query = f"{location}, {province_city}".strip(", ")
                 try:
-                    address = page.locator('//div[contains(@class, "Io6YTe")]').first.inner_text(timeout=10000)
-                except Exception:
-                    address = "N/A"
+                    page.goto("https://maps.google.com", timeout=60000)
 
-                # Lấy tọa độ từ URL
-                try:
-                    url = page.url
-                    coords = url.split("/@")[1].split(",")[:2]
-                    latitude = coords[0].strip()
-                    longitude = coords[1].strip()
-                except Exception:
-                    latitude = "N/A"
-                    longitude = "N/A"
+                    search_box = page.locator('//input[@id="searchboxinput"]')
+                    search_box.fill(search_query)
+                    page.press('//input[@id="searchboxinput"]', "Enter")
 
-                # Lưu kết quả
-                data.append({
-                    "location": location,
-                    "address": address,
-                    "latitude": latitude,
-                    "longitude": longitude
-                })
-                print(f"Processed: {location}")
+                    page.wait_for_load_state("networkidle", timeout=60000)
 
-            except Exception as e:
-                print(f"Failed to process location '{location}': {e}")
-                data.append({
-                    "location": location,
-                    "address": "Error",
-                    "latitude": "Error",
-                    "longitude": "Error"
-                })
+                    has_location_list = page.locator(
+                        '//a[contains(@href, "https://www.google.com/maps/place")]'
+                    ).count()
+                    if has_location_list > 0:
+                        page.hover(
+                            '//a[contains(@href, "https://www.google.com/maps/place")]'
+                        )
+                        page.click(
+                            '//a[contains(@href, "https://www.google.com/maps/place")]'
+                        )
+                        page.wait_for_load_state("networkidle", timeout=60000)
+
+                    try:
+                        address = page.locator(
+                            '//div[contains(@class, "Io6YTe")]'
+                        ).first.inner_text(timeout=10000)
+                    except Exception:
+                        address = "N/A"
+
+                    try:
+                        latitude, longitude = get_lat_lng(address)
+                    except Exception:
+                        latitude = "N/A"
+                        longitude = "N/A"
+
+                    detail["address"] = address
+                    detail["latitude"] = latitude
+                    detail["longitude"] = longitude
+
+                    print(
+                        f"Location: {location}, Address: {address}, Latitude: {latitude}, Longitude: {longitude}"
+                    )
+                except Exception as e:
+                    print(f"Failed to process location '{location}': {e}")
+                    detail["address"] = "Error"
+                    detail["latitude"] = "Error"
+                    detail["longitude"] = "Error"
 
         browser.close()
 
-    return data
+    return trip_plans
 
 
-# API endpoint để xử lý yêu cầu
-@app.route('/')
+def is_within_vietnam(lat, lon):
+    lat_min = 8.179
+    lat_max = 23.393
+    lon_min = 102.144
+    lon_max = 109.465
+    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
+
+
+def calculate_total_distance(trip_plans):
+    for trip in trip_plans:
+        origins = []
+        for detail in trip["details"]:
+            lat = detail["latitude"]
+            lon = detail["longitude"]
+            if is_within_vietnam(lat, lon):
+                origins.append(f"{lat},{lon}")
+            else:
+                print(
+                    f"Coordinate ({lat}, {lon}) is outside of Vietnam and will be excluded."
+                )
+
+        if not origins:
+            print(f"No valid origins for trip suggestion: {trip['suggestion']}")
+            continue
+
+        destination = (
+            f"{trip['details'][-1]['latitude']},{trip['details'][-1]['longitude']}"
+        )
+
+        origins_str = "|".join(origins)
+        url = f"https://api-v2.distancematrix.ai/maps/api/distancematrix/json?origins={origins_str}&destinations={destination}&key={distance_matrix_api_key}"
+        print(url)
+        response = requests.get(url)
+        print(response)
+        data = response.json()
+        print(data)
+        if data["status"] == "OK":
+            total_distance = 0
+            for row in data["rows"]:
+                for element in row["elements"]:
+                    if element["status"] == "OK":
+                        total_distance += element["distance"]["value"]  # in meters
+
+            total_distance_km = total_distance / 1000
+            trip["total_distance_km"] = total_distance_km
+            print(f"{trip['suggestion']}: {total_distance_km:.2f} km")
+        else:
+            print(f"Error fetching data for trip suggestion: {trip['suggestion']}")
+            trip["total_distance_km"] = 0
+
+
+@app.route("/")
 def home():
     return "Welcome to the Trip Planner API!"
 
-@app.route('/api/trip-planner', methods=['POST'])
+
+@app.route("/api/trip-planner", methods=["POST"])
 def trip_planner():
     try:
-        # Nhận dữ liệu từ request
         input_data = request.json
-        # Gọi hàm suggest_trip_plan
         result = suggest_trip_plan(input_data)
-        # print(r)
-        # Trả về kết quả dưới dạng JSON
         return jsonify({"status": "success", "data": result})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
-# Chạy ứng dụng Flask
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     app.run(debug=True)
