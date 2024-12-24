@@ -690,23 +690,44 @@ Below are itinerary suggestions customized into three main themes: nature explor
   }}
 """
 
+    # Prepare the request data
+    url = "https://api.hyperbolic.xyz/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJsZW5ndXllbi4yMzEyMDNAZ21haWwuY29tIiwiaWF0IjoxNzMyNzExNzU3fQ.7JOGknKgep1NroYaFgvm8TTgBEi7lxQ9rUEGHWBgve4",
+    }
+    data = {
+        "messages": [{"role": "user", "content": prompt}],
+        "model": "meta-llama/Meta-Llama-3.1-405B-Instruct",
+        "max_tokens": 3050,
+        "temperature": 0.7,
+        "top_p": 0.9,
+    }
+
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=3000,
-            temperature=0.7,
+        # Make the API request
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()  # Raise an error for bad responses
+
+        # Parse the response
+        response_data = response.json()
+        print(response.json())
+        trip_plans = (
+            response_data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
         )
-        print("response", response["choices"][0]["message"]["content"].strip())
 
-        trip_data = json.loads(response["choices"][0]["message"]["content"].strip())
-        trip_plans = trip_data.get("trip_plans", [])
-
-        updated_trip_plans = scrape_and_update_trip_plans(trip_plans)
+        # Assuming the response is in JSON format
+        trip_data = json.loads(trip_plans)
+        updated_trip_plans = scrape_and_update_trip_plans(
+            trip_data.get("trip_plans", [])
+        )
         print("Total distance:", calculate_total_distance(updated_trip_plans))
         return {"trip_plans": updated_trip_plans}
 
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         print(f"Error: {e}")
         return {"error": str(e)}
 
